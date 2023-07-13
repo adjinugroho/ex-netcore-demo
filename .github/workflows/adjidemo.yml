@@ -1,0 +1,67 @@
+name: Build and Deploy
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+  
+env:
+  AZURE_WEBAPP_NAME: adjidemo
+  AZURE_WEBAPP_PACKAGE_PATH: src\WebApp\published
+  CONFIGURATION: Release
+  DOTNET_CORE_VERSION: 6.0.x
+  WORKING_DIRECTORY: src\WebApp
+
+jobs:
+  build:
+    name: Build WebApp
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Set up SDK
+        uses: actions/setup-dotnet@v3
+        with:
+          dotnet-version: ${{ env.DOTNET_CORE_VERSION }}
+
+      - name: Restore WebApp
+        run: dotnet restore "${{ env.WORKING_DIRECTORY }}"
+
+      - name: Build WebApp
+        run: dotnet build "${{ env.WORKING_DIRECTORY }}" --configuration ${{ env.CONFIGURATION }} --no-restore
+        
+      - name: Publish WebApp
+        run: dotnet publish "${{ env.WORKING_DIRECTORY }}" --configuration ${{ env.CONFIGURATION }} --no-build -o ${{ env.AZURE_WEBAPP_PACKAGE_PATH }}
+
+      - name: Publish Artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: WebApp
+          path: ${{ env.AZURE_WEBAPP_PACKAGE_PATH }}
+
+  deploy:
+    name: Deploy WebApp
+    runs-on: windows-latest
+    needs: build
+
+    environment:
+      name: 'Production'
+      url: ${{ steps.deploy-to-webapp.outputs.webapp-url }}
+
+    steps:
+      - name: Download Artifact
+        uses: actions/download-artifact@v3
+        with:
+          name: WebApp
+          path: ${{ env.AZURE_WEBAPP_PACKAGE_PATH }}
+
+      - name: Deploy to Azure
+        id: deploy-to-webapp
+        uses: azure/webapps-deploy@v2
+        with:
+          app-name: ${{ env.AZURE_WEBAPP_NAME }}
+          slot-name: 'Production'
+          publish-profile: ${{ secrets.AZUREAPPSERVICE_PUBLISHPROFILE_6D560699B3FF402394F5D379386E8E8C }}
+          package: ${{ env.AZURE_WEBAPP_PACKAGE_PATH }}
